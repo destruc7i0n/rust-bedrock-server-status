@@ -43,7 +43,7 @@ pub fn status (h: String, p: Option<i32>) -> Result<Status, Box<dyn std::error::
   let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).expect("could not bind to local address");
   socket.connect(&format!("{}:{}", h, port)).expect("connection with server failed");
 
-  // timeout
+  // timeout, 2 secs
   socket.set_read_timeout(Some(Duration::new(2, 0)))?;
   socket.set_write_timeout(Some(Duration::new(2, 0)))?;
 
@@ -67,18 +67,17 @@ pub fn status (h: String, p: Option<i32>) -> Result<Status, Box<dyn std::error::
 
   // pong
   let mut packet = [0u8; 1024];
-  let (amt, src) = socket.recv_from(&mut packet).expect("could not get status");
+  let (amt, src) = socket.recv_from(&mut packet)?;
 
   // get the server guid from the packet
-  let guid_bytes = &packet[(8+1)..(8+8+1)];
-  let guid = i64::from_be_bytes([ guid_bytes[0], guid_bytes[1], guid_bytes[2], guid_bytes[3], guid_bytes[4], guid_bytes[5], guid_bytes[6], guid_bytes[7] ]);
+  let guid_bytes: [u8; 8] = packet[(8+1)..(8+8+1)].try_into().unwrap();
+  let guid = i64::from_be_bytes(guid_bytes);
 
   // skip unused data
   let server_data_bytes = &packet[(8 + 8 + 16 + 2 + 1)..amt];
-  let server_data  = str::from_utf8(&server_data_bytes).expect("could not decode server data");
+  let server_data = str::from_utf8(&server_data_bytes).expect("could not decode server data");
 
   let server_data_parts = server_data.split(";").take(9).collect::<Vec<_>>();
-  // println!("{:?}", server_data_parts);
 
   let get_part_string = |index: usize| -> String { match server_data_parts.get(index) { Some(&s) => s, None => "" }.to_string() };
 
@@ -135,8 +134,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "could not get status")]
   fn test_fake_server () {
-    status("localhost".to_string(), None).unwrap();
+    assert!(status("localhost".to_string(), None).is_err());
   }
 }
